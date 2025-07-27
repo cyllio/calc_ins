@@ -29,12 +29,19 @@ if 'capturar' not in st.session_state:
     st.session_state['capturar'] = False
 if 'foto_bytes' not in st.session_state:
     st.session_state['foto_bytes'] = None
+if 'foto_hash' not in st.session_state:
+    st.session_state['foto_hash'] = None
 if 'texto_extraido' not in st.session_state:
     st.session_state['texto_extraido'] = ''
 if 'debug_info' not in st.session_state:
     st.session_state['debug_info'] = None
 if 'campos_auto' not in st.session_state:
     st.session_state['campos_auto'] = ('', '', 0.0, '', '', '')
+
+# Função para gerar hash da foto
+def get_foto_hash(foto_bytes):
+    import hashlib
+    return hashlib.md5(foto_bytes).hexdigest()
 
 # Função para adicionar produto à lista
 def adicionar_produto(produto):
@@ -124,6 +131,7 @@ with col1:
     if st.button("CAPTURAR"):
         st.session_state['capturar'] = True
         st.session_state['foto_bytes'] = None
+        st.session_state['foto_hash'] = None
         st.session_state['texto_extraido'] = ''
         st.session_state['debug_info'] = None
         st.session_state['campos_auto'] = ('', '', 0.0, '', '', '')
@@ -132,13 +140,24 @@ with col1:
     if st.session_state['capturar']:
         foto = st.camera_input("Tire uma foto do produto (os dados serão extraídos automaticamente)")
         if foto is not None:
-            st.session_state['foto_bytes'] = foto.getvalue()
-            st.session_state['capturar'] = False  # Desativa a câmera após captura
-            with st.spinner('Extraindo dados da embalagem com IA OpenAI...'):
-                texto_extraido, debug_info = extrair_texto_imagem_openai(st.session_state['foto_bytes'])
-            st.session_state['texto_extraido'] = texto_extraido
-            st.session_state['debug_info'] = debug_info
-            st.session_state['campos_auto'] = preencher_campos_automaticamente(texto_extraido)
+            foto_bytes = foto.getvalue()
+            foto_hash = get_foto_hash(foto_bytes)
+            
+            # Só processa se a foto for nova
+            if foto_hash != st.session_state['foto_hash']:
+                st.session_state['foto_bytes'] = foto_bytes
+                st.session_state['foto_hash'] = foto_hash
+                st.session_state['capturar'] = False  # Desativa a câmera após captura
+                
+                with st.spinner('Extraindo dados da embalagem com IA OpenAI...'):
+                    texto_extraido, debug_info = extrair_texto_imagem_openai(foto_bytes)
+                st.session_state['texto_extraido'] = texto_extraido
+                st.session_state['debug_info'] = debug_info
+                st.session_state['campos_auto'] = preencher_campos_automaticamente(texto_extraido)
+            else:
+                # Se a foto não mudou, apenas armazena os bytes
+                st.session_state['foto_bytes'] = foto_bytes
+                st.session_state['capturar'] = False
 
     # Exibe a imagem capturada, se houver
     if st.session_state['foto_bytes']:
@@ -194,6 +213,7 @@ if st.button("Adicionar Produto com Foto"):
         st.success("Produto adicionado!")
         # Limpa estado da foto e campos automáticos
         st.session_state['foto_bytes'] = None
+        st.session_state['foto_hash'] = None
         st.session_state['texto_extraido'] = ''
         st.session_state['debug_info'] = None
         st.session_state['campos_auto'] = ('', '', 0.0, '', '', '')
