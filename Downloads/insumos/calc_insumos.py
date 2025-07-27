@@ -24,6 +24,17 @@ if 'rendimento' not in st.session_state:
     st.session_state['rendimento'] = ''
 if 'observacoes' not in st.session_state:
     st.session_state['observacoes'] = ''
+# Estados para controle da captura
+if 'capturar' not in st.session_state:
+    st.session_state['capturar'] = False
+if 'foto_bytes' not in st.session_state:
+    st.session_state['foto_bytes'] = None
+if 'texto_extraido' not in st.session_state:
+    st.session_state['texto_extraido'] = ''
+if 'debug_info' not in st.session_state:
+    st.session_state['debug_info'] = None
+if 'campos_auto' not in st.session_state:
+    st.session_state['campos_auto'] = ('', '', 0.0, '', '', '')
 
 # Função para adicionar produto à lista
 def adicionar_produto(produto):
@@ -81,18 +92,14 @@ def preencher_campos_automaticamente(texto_extraido):
     marca = ''
     validade = ''
     lote = ''
-    # Regex e heurísticas para cada campo
     linhas = texto_extraido.split('\n')
     for linha in linhas:
         l = linha.lower()
-        # Descrição: primeira linha longa e não numérica
         if not descricao and len(linha.strip()) > 3 and not re.match(r'^\d+$', linha.strip()):
             descricao = linha.strip()
-        # Unidade: procura por padrões tipo "500g", "1kg", "200 ml"
         unidade_match = re.search(r'(\d+[\.,]?\d*)\s*(kg|g|ml|l|unid|unidade|unidades|metros|cm)', l)
         if unidade_match:
             unidade = unidade_match.group(0)
-        # Preço: procura por "R$" ou "preço"
         preco_match = re.search(r'(r\$\s*\d+[\.,]?\d*)', l)
         if preco_match:
             preco_str = preco_match.group(0).replace('r$', '').replace(' ', '').replace(',', '.')
@@ -100,13 +107,10 @@ def preencher_campos_automaticamente(texto_extraido):
                 preco = float(preco_str)
             except:
                 pass
-        # Marca
         if 'marca' in l:
             marca = linha.split(':')[-1].strip()
-        # Validade
         if 'validade' in l:
             validade = linha.split(':')[-1].strip()
-        # Lote
         if 'lote' in l:
             lote = linha.split(':')[-1].strip()
     return descricao, unidade, preco, marca, validade, lote
@@ -116,28 +120,51 @@ st.subheader("Adicionar Produto com Foto")
 col1, col2 = st.columns([2, 2])
 
 with col1:
-    foto = st.camera_input("Tire uma foto do produto (os dados serão extraídos automaticamente)")
-    texto_extraido = ''
-    debug_info = None
-    if foto is not None:
-        st.image(foto, caption="Foto capturada", width=200)
-        foto_bytes = foto.getvalue()
-        with st.spinner('Extraindo dados da embalagem com IA OpenAI...'):
-            texto_extraido, debug_info = extrair_texto_imagem_openai(foto_bytes)
-        if texto_extraido:
-            st.text_area("Texto extraído da embalagem:", value=texto_extraido, height=100)
-        else:
-            st.warning("Nenhum texto extraído da embalagem. Confira a qualidade da foto e se há texto visível.")
+    # Botão para ativar a captura
+    if st.button("CAPTURAR"):
+        st.session_state['capturar'] = True
+        st.session_state['foto_bytes'] = None
+        st.session_state['texto_extraido'] = ''
+        st.session_state['debug_info'] = None
+        st.session_state['campos_auto'] = ('', '', 0.0, '', '', '')
+
+    # Só mostra a câmera se o usuário clicou em CAPTURAR
+    if st.session_state['capturar']:
+        foto = st.camera_input("Tire uma foto do produto (os dados serão extraídos automaticamente)")
+        if foto is not None:
+            st.session_state['foto_bytes'] = foto.getvalue()
+            st.session_state['capturar'] = False  # Desativa a câmera após captura
+            with st.spinner('Extraindo dados da embalagem com IA OpenAI...'):
+                texto_extraido, debug_info = extrair_texto_imagem_openai(st.session_state['foto_bytes'])
+            st.session_state['texto_extraido'] = texto_extraido
+            st.session_state['debug_info'] = debug_info
+            st.session_state['campos_auto'] = preencher_campos_automaticamente(texto_extraido)
+
+    # Exibe a imagem capturada, se houver
+    if st.session_state['foto_bytes']:
+        st.image(st.session_state['foto_bytes'], caption="Foto capturada", width=200)
+    # Exibe o texto extraído, se houver
+    if st.session_state['texto_extraido']:
+        st.text_area("Texto extraído da embalagem:", value=st.session_state['texto_extraido'], height=100)
+    elif st.session_state['foto_bytes']:
+        st.warning("Nenhum texto extraído da embalagem. Confira a qualidade da foto e se há texto visível.")
+    # Debug
+    if st.session_state['debug_info']:
         with st.expander("🔎 Debug IA (clique para ver detalhes)"):
-            st.write(debug_info)
-        descricao_auto, unidade_auto, preco_auto, marca_auto, validade_auto, lote_auto = preencher_campos_automaticamente(texto_extraido)
-    else:
-        descricao_auto = ''
-        unidade_auto = ''
-        preco_auto = 0.0
-        marca_auto = ''
-        validade_auto = ''
-        lote_auto = ''
+            st.write(st.session_state['debug_info'])
+    # Preenche os campos automáticos
+    descricao_auto, unidade_auto, preco_auto, marca_auto, validade_auto, lote_auto = st.session_state['campos_auto']
+
+# Inicialização padrão dos campos automáticos caso não estejam definidos
+if 'campos_auto' not in st.session_state or not st.session_state['campos_auto']:
+    descricao_auto = ''
+    unidade_auto = ''
+    preco_auto = 0.0
+    marca_auto = ''
+    validade_auto = ''
+    lote_auto = ''
+else:
+    descricao_auto, unidade_auto, preco_auto, marca_auto, validade_auto, lote_auto = st.session_state['campos_auto']
 
 with col2:
     descricao = st.text_input("Descrição do produto:", value=descricao_auto)
@@ -165,6 +192,11 @@ if st.button("Adicionar Produto com Foto"):
         }
         adicionar_produto(produto)
         st.success("Produto adicionado!")
+        # Limpa estado da foto e campos automáticos
+        st.session_state['foto_bytes'] = None
+        st.session_state['texto_extraido'] = ''
+        st.session_state['debug_info'] = None
+        st.session_state['campos_auto'] = ('', '', 0.0, '', '', '')
     else:
         st.warning("Preencha ao menos a descrição e unidade!")
 
