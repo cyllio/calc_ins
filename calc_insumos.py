@@ -1,12 +1,19 @@
+# cd C:\Users\lucia\Downloads\insumos
+# git init
+# git remote add origin https://github.com/cyllio/calc_ins.git
+# git add .
+# git commit -m "ajusta reset de campos ainda com lixo"
+# git branch -M main
+# git push -u origin main
+
+
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
-from PIL import Image
-import io
 import requests
 import base64
 import re
+import json
 
 # Configuração da página
 st.set_page_config(page_title="Cadastro de Insumos com Foto", layout="wide")
@@ -16,7 +23,7 @@ st.title("📸 Cadastro de Insumos para Receita")
 openai_api_key = st.secrets["openai"]["api_key"]
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
-# Função para inicializar lista de produtos na sessão
+# Inicialização de estados
 if 'produtos' not in st.session_state:
     st.session_state['produtos'] = []
 if 'nome_receita' not in st.session_state:
@@ -45,6 +52,10 @@ if 'campos_extraidos' not in st.session_state:
         'validade': '',
         'lote': ''
     }
+if 'quantidade_input' not in st.session_state:
+    st.session_state['quantidade_input'] = None
+if 'preco_input' not in st.session_state:
+    st.session_state['preco_input'] = None
 
 # Função para gerar hash da foto
 def get_foto_hash(foto_bytes):
@@ -55,9 +66,8 @@ def get_foto_hash(foto_bytes):
 def adicionar_produto(produto):
     st.session_state['produtos'].append(produto)
 
-# Função para buscar preço médio na internet (usando API pública ou fallback)
+# Função para buscar preço médio na internet (Mercado Livre)
 def buscar_preco_medio(descricao):
-    # Exemplo: Busca no Mercado Livre (pode ser adaptado para outra API)
     try:
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={descricao}"
         resp = requests.get(url, timeout=5)
@@ -69,7 +79,7 @@ def buscar_preco_medio(descricao):
                     return round(sum(precos) / len(precos), 2)
     except Exception:
         pass
-    return None  # Não encontrou
+    return None
 
 # Função para extrair texto da imagem usando OpenAI Vision (GPT-4o)
 def extrair_texto_imagem_openai(image_bytes):
@@ -116,9 +126,8 @@ def extrair_texto_imagem_openai(image_bytes):
             debug_info['result'] = response.text
         return '', debug_info
 
-# Função para parsing dos campos extraídos (esperando JSON)
+# Função para parsing dos campos extraídos (garantindo separação correta)
 def extrair_campos_automaticamente(texto_extraido):
-    import json
     campos = {
         'descricao': '',
         'unidade': '',
@@ -189,7 +198,6 @@ if st.button("📷 CAPTURAR"):
     st.session_state['foto_hash'] = None
     st.session_state['texto_original'] = ''
     st.session_state['debug_info'] = None
-    # Limpa todos os campos do formulário
     st.session_state['campos_extraidos'] = {
         'descricao': '',
         'unidade': '',
@@ -199,6 +207,8 @@ if st.button("📷 CAPTURAR"):
         'validade': '',
         'lote': ''
     }
+    st.session_state['quantidade_input'] = None
+    st.session_state['preco_input'] = None
 
 # Mostra mensagem quando a câmera não está ativa
 if not st.session_state['capturar']:
@@ -231,6 +241,8 @@ if st.session_state['capturar']:
                 if preco_medio:
                     campos['preco'] = preco_medio
             st.session_state['campos_extraidos'] = campos
+            st.session_state['quantidade_input'] = None
+            st.session_state['preco_input'] = None
         else:
             st.session_state['foto_bytes'] = foto_bytes
             st.session_state['capturar'] = False
@@ -256,10 +268,24 @@ col1, col2 = st.columns([2, 2])
 
 with col1:
     descricao = st.text_input("Descrição do produto:", value=st.session_state['campos_extraidos']['descricao'])
-    quantidade = st.number_input("Quantidade utilizada na receita:", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="")  # Vazio por padrão
+    quantidade = st.number_input(
+        "Quantidade utilizada na receita:",
+        min_value=0.0,
+        step=0.01,
+        format="%.2f",
+        value=st.session_state['quantidade_input'] if st.session_state['quantidade_input'] is not None else 0.0,
+        key="quantidade_input"
+    )
     unidade = st.text_input("Unidade de medida (kg, g, ml, l, unid, etc):", value=st.session_state['campos_extraidos']['unidade'])
     volume = st.text_input("Volume/Capacidade do produto (1lt, 350g, 2kg, etc):", value=st.session_state['campos_extraidos']['volume'])
-    preco = st.number_input("Preço médio de mercado (R$):", min_value=0.0, step=0.01, format="%.2f", value=st.session_state['campos_extraidos']['preco'] if st.session_state['campos_extraidos']['preco'] else None, placeholder="")
+    preco = st.number_input(
+        "Preço médio de mercado (R$):",
+        min_value=0.0,
+        step=0.01,
+        format="%.2f",
+        value=st.session_state['preco_input'] if st.session_state['preco_input'] is not None else (st.session_state['campos_extraidos']['preco'] if st.session_state['campos_extraidos']['preco'] else 0.0),
+        key="preco_input"
+    )
 
 with col2:
     marca = st.text_input("Marca (opcional):", value=st.session_state['campos_extraidos']['marca'])
@@ -272,10 +298,10 @@ if st.button("✅ INSERIR PRODUTO"):
         produto = {
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'descricao_produto': descricao,
-            'quantidade': quantidade,
+            'quantidade': st.session_state['quantidade_input'],
             'unidade_medida': unidade,
             'volume_capacidade': volume,
-            'preco_medio_mercado': preco,
+            'preco_medio_mercado': st.session_state['preco_input'],
             'marca': marca,
             'validade': validade,
             'lote': lote,
@@ -283,8 +309,7 @@ if st.button("✅ INSERIR PRODUTO"):
         }
         adicionar_produto(produto)
         st.success("✅ Produto adicionado com sucesso!")
-        
-        # Limpa estado da foto e campos
+        # Limpa campos
         st.session_state['foto_bytes'] = None
         st.session_state['foto_hash'] = None
         st.session_state['texto_original'] = ''
@@ -298,6 +323,8 @@ if st.button("✅ INSERIR PRODUTO"):
             'validade': '',
             'lote': ''
         }
+        st.session_state['quantidade_input'] = None
+        st.session_state['preco_input'] = None
         st.rerun()
     else:
         st.warning("⚠️ Preencha ao menos a descrição e unidade!")
@@ -382,6 +409,8 @@ if st.button("🎯 Finalizar e Salvar Receita"):
         st.session_state['foto_hash'] = None
         st.session_state['texto_original'] = ''
         st.session_state['debug_info'] = None
+        st.session_state['quantidade_input'] = None
+        st.session_state['preco_input'] = None
         st.success("Formulário limpo para nova receita!")
     else:
         st.warning("⚠️ Cadastre ao menos um produto e informe o nome da receita!")
