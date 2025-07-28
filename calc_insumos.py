@@ -1,6 +1,7 @@
 # cd C:\Users\lucia\Downloads\insumos
 # git init
-# git remote add origin https://github.com/cyllio/calc_ins.git
+# # git remote add origin https://github.com/cyllio/calc_ins.git
+# git remote set-url origin https://github.com/cyllio/calc_ins.git
 # git add .
 # git commit -m "ajusta reset de campos ainda com lixo"
 # git branch -M main
@@ -53,9 +54,29 @@ if 'campos_extraidos' not in st.session_state:
         'lote': ''
     }
 if 'quantidade_input' not in st.session_state:
-    st.session_state['quantidade_input'] = None
+    st.session_state['quantidade_input'] = 0.0
 if 'preco_input' not in st.session_state:
-    st.session_state['preco_input'] = None
+    st.session_state['preco_input'] = 0.0
+
+# Função para resetar o formulário e evitar erro do Streamlit
+def resetar_formulario():
+    st.session_state['foto_bytes'] = None
+    st.session_state['foto_hash'] = None
+    st.session_state['texto_original'] = ''
+    st.session_state['debug_info'] = None
+    st.session_state['campos_extraidos'] = {
+        'descricao': '',
+        'unidade': '',
+        'volume': '',
+        'preco': None,
+        'marca': '',
+        'validade': '',
+        'lote': ''
+    }
+    st.session_state['quantidade_input'] = 0.0
+    st.session_state['preco_input'] = 0.0
+    st.session_state['capturar'] = False
+    st.rerun()
 
 # Função para gerar hash da foto
 def get_foto_hash(foto_bytes):
@@ -194,21 +215,7 @@ st.subheader("Adicionar Produto com Foto")
 # Botão para ativar a captura
 if st.button("📷 CAPTURAR"):
     st.session_state['capturar'] = True
-    st.session_state['foto_bytes'] = None
-    st.session_state['foto_hash'] = None
-    st.session_state['texto_original'] = ''
-    st.session_state['debug_info'] = None
-    st.session_state['campos_extraidos'] = {
-        'descricao': '',
-        'unidade': '',
-        'volume': '',
-        'preco': None,
-        'marca': '',
-        'validade': '',
-        'lote': ''
-    }
-    st.session_state['quantidade_input'] = None
-    st.session_state['preco_input'] = None
+    resetar_formulario()
 
 # Mostra mensagem quando a câmera não está ativa
 if not st.session_state['capturar']:
@@ -241,8 +248,9 @@ if st.session_state['capturar']:
                 if preco_medio:
                     campos['preco'] = preco_medio
             st.session_state['campos_extraidos'] = campos
-            st.session_state['quantidade_input'] = None
-            st.session_state['preco_input'] = None
+            st.session_state['quantidade_input'] = 0.0
+            st.session_state['preco_input'] = campos['preco'] if campos['preco'] else 0.0
+            st.rerun()
         else:
             st.session_state['foto_bytes'] = foto_bytes
             st.session_state['capturar'] = False
@@ -273,7 +281,7 @@ with col1:
         min_value=0.0,
         step=0.01,
         format="%.2f",
-        value=st.session_state['quantidade_input'] if st.session_state['quantidade_input'] is not None else 0.0,
+        value=st.session_state['quantidade_input'],
         key="quantidade_input"
     )
     unidade = st.text_input("Unidade de medida (kg, g, ml, l, unid, etc):", value=st.session_state['campos_extraidos']['unidade'])
@@ -283,7 +291,7 @@ with col1:
         min_value=0.0,
         step=0.01,
         format="%.2f",
-        value=st.session_state['preco_input'] if st.session_state['preco_input'] is not None else (st.session_state['campos_extraidos']['preco'] if st.session_state['campos_extraidos']['preco'] else 0.0),
+        value=st.session_state['preco_input'],
         key="preco_input"
     )
 
@@ -309,23 +317,7 @@ if st.button("✅ INSERIR PRODUTO"):
         }
         adicionar_produto(produto)
         st.success("✅ Produto adicionado com sucesso!")
-        # Limpa campos
-        st.session_state['foto_bytes'] = None
-        st.session_state['foto_hash'] = None
-        st.session_state['texto_original'] = ''
-        st.session_state['debug_info'] = None
-        st.session_state['campos_extraidos'] = {
-            'descricao': '',
-            'unidade': '',
-            'volume': '',
-            'preco': None,
-            'marca': '',
-            'validade': '',
-            'lote': ''
-        }
-        st.session_state['quantidade_input'] = None
-        st.session_state['preco_input'] = None
-        st.rerun()
+        resetar_formulario()
     else:
         st.warning("⚠️ Preencha ao menos a descrição e unidade!")
 
@@ -396,21 +388,7 @@ if st.button("🎯 Finalizar e Salvar Receita"):
         st.session_state['nome_receita'] = ''
         st.session_state['rendimento'] = ''
         st.session_state['observacoes'] = ''
-        st.session_state['campos_extraidos'] = {
-            'descricao': '',
-            'unidade': '',
-            'volume': '',
-            'preco': None,
-            'marca': '',
-            'validade': '',
-            'lote': ''
-        }
-        st.session_state['foto_bytes'] = None
-        st.session_state['foto_hash'] = None
-        st.session_state['texto_original'] = ''
-        st.session_state['debug_info'] = None
-        st.session_state['quantidade_input'] = None
-        st.session_state['preco_input'] = None
+        resetar_formulario()
         st.success("Formulário limpo para nova receita!")
     else:
         st.warning("⚠️ Cadastre ao menos um produto e informe o nome da receita!")
