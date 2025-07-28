@@ -1,12 +1,3 @@
-# cd C:\Users\lucia\Downloads\insumos
-# git init
-# # git remote add origin https://github.com/cyllio/calc_ins.git
-# git remote set-url origin https://github.com/cyllio/calc_ins.git
-# git add .
-# git commit -m "ajusta reset de campos ainda com lixo"
-# git branch -M main
-# git push -u origin main
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
