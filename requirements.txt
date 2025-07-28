@@ -1,10 +1,4 @@
-<<<<<<< HEAD
 streamlit
 pandas
 requests
-=======
-streamlit
-pandas
-requests
->>>>>>> a85f5c058de5153fb3f507837184042f7b164944
 pillow
