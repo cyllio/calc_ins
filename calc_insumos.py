@@ -7,7 +7,6 @@
 # git branch -M main
 # git push -u origin main
 
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -58,7 +57,7 @@ if 'quantidade_input' not in st.session_state:
 if 'preco_input' not in st.session_state:
     st.session_state['preco_input'] = 0.0
 
-# Função para resetar o formulário e evitar erro do Streamlit
+# Função para resetar o formulário (sem mexer em 'capturar')
 def resetar_formulario():
     st.session_state['foto_bytes'] = None
     st.session_state['foto_hash'] = None
@@ -75,8 +74,6 @@ def resetar_formulario():
     }
     st.session_state['quantidade_input'] = 0.0
     st.session_state['preco_input'] = 0.0
-    st.session_state['capturar'] = False
-    st.rerun()
 
 # Função para gerar hash da foto
 def get_foto_hash(foto_bytes):
@@ -221,6 +218,10 @@ if st.button("📷 CAPTURAR"):
 if not st.session_state['capturar']:
     st.info("📷 Clique em 'CAPTURAR' para ativar a câmera e tirar uma foto do produto.")
 
+# Dica para câmera traseira
+if st.session_state['capturar']:
+    st.warning("Se estiver no celular, use o ícone de troca de câmera para selecionar a câmera traseira.")
+
 # Só mostra a câmera se o usuário clicou em CAPTURAR
 if st.session_state['capturar']:
     st.success("📸 Câmera ativada! Tire uma foto do produto.")
@@ -318,6 +319,8 @@ if st.button("✅ INSERIR PRODUTO"):
         adicionar_produto(produto)
         st.success("✅ Produto adicionado com sucesso!")
         resetar_formulario()
+        st.session_state['capturar'] = False
+        st.rerun()
     else:
         st.warning("⚠️ Preencha ao menos a descrição e unidade!")
 
@@ -389,6 +392,8 @@ if st.button("🎯 Finalizar e Salvar Receita"):
         st.session_state['rendimento'] = ''
         st.session_state['observacoes'] = ''
         resetar_formulario()
+        st.session_state['capturar'] = False
+        st.rerun()
         st.success("Formulário limpo para nova receita!")
     else:
         st.warning("⚠️ Cadastre ao menos um produto e informe o nome da receita!")
