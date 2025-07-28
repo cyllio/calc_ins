@@ -108,44 +108,49 @@ def extrair_campos_automaticamente(texto_extraido):
     marca = ''
     validade = ''
     lote = ''
-    
     linhas = texto_extraido.split('\n')
     for linha in linhas:
         l = linha.lower()
-        if not descricao and len(linha.strip()) > 3 and not re.match(r'^\d+$', linha.strip()):
-            descricao = linha.strip()
-        
-        # Busca por volume (capacidade do produto)
-        volume_match = re.search(r'(\d+[\.,]?\d*)\s*(kg|g|ml|l|lt|ml)', l)
-        if volume_match:
-            volume = volume_match.group(0)
-        
-        # Busca por unidade de medida
-        unidade_match = re.search(r'\b(kg|g|ml|l|lt|unid|unidade|unidades|metros|cm)\b', l)
-        if unidade_match:
-            unidade = unidade_match.group(1)
-        
-        # Busca por preço
-        preco_match = re.search(r'(r\$\s*\d+[\.,]?\d*)', l)
-        if preco_match:
-            preco_str = preco_match.group(0).replace('r$', '').replace(' ', '').replace(',', '.')
-            try:
-                preco = float(preco_str)
-            except:
-                pass
-        
-        # Busca por marca
+        # Extrai marca primeiro, se houver
         if 'marca' in l:
-            marca = linha.split(':')[-1].strip()
-        
-        # Busca por validade
+            marca_match = re.search(r'marca\s*[:\-]?\s*(.*)', linha, re.IGNORECASE)
+            if marca_match:
+                marca = marca_match.group(1).strip()
+            continue
+        # Extrai validade
         if 'validade' in l:
-            validade = linha.split(':')[-1].strip()
-        
-        # Busca por lote
+            validade_match = re.search(r'validade\s*[:\-]?\s*(.*)', linha, re.IGNORECASE)
+            if validade_match:
+                validade = validade_match.group(1).strip()
+            continue
+        # Extrai lote
         if 'lote' in l:
-            lote = linha.split(':')[-1].strip()
-    
+            lote_match = re.search(r'lote\s*[:\-]?\s*(.*)', linha, re.IGNORECASE)
+            if lote_match:
+                lote = lote_match.group(1).strip()
+            continue
+        # Busca por volume (capacidade do produto)
+        if not volume:
+            volume_match = re.search(r'(\d+[\.,]?\d*)\s*(kg|g|ml|l|lt|ml)', l)
+            if volume_match:
+                volume = volume_match.group(0)
+        # Busca por unidade de medida
+        if not unidade:
+            unidade_match = re.search(r'\b(kg|g|ml|l|lt|unid|unidade|unidades|metros|cm)\b', l)
+            if unidade_match:
+                unidade = unidade_match.group(1)
+        # Busca por preço
+        if not preco:
+            preco_match = re.search(r'(r\$\s*\d+[\.,]?\d*)', l)
+            if preco_match:
+                preco_str = preco_match.group(0).replace('r$', '').replace(' ', '').replace(',', '.')
+                try:
+                    preco = float(preco_str)
+                except:
+                    pass
+        # Primeira linha não vazia, não numérica, que não seja marca, validade ou lote, vira descrição
+        if not descricao and len(linha.strip()) > 3 and not re.match(r'^(marca|validade|lote)\b', l) and not re.match(r'^[\d\s]+$', linha.strip()):
+            descricao = linha.strip()
     return {
         'descricao': descricao,
         'unidade': unidade,
@@ -166,6 +171,7 @@ if st.button("📷 CAPTURAR"):
     st.session_state['foto_hash'] = None
     st.session_state['texto_original'] = ''
     st.session_state['debug_info'] = None
+    # Limpa todos os campos do formulário
     st.session_state['campos_extraidos'] = {
         'descricao': '',
         'unidade': '',
@@ -298,18 +304,21 @@ if st.button("🎯 Finalizar e Salvar Receita"):
         df['nome_receita'] = st.session_state['nome_receita']
         df['rendimento_total'] = st.session_state['rendimento']
         df['observacoes'] = st.session_state['observacoes']
-        
+
         # Calcula totais
         total_custo = df['preco_medio_mercado'].sum()
         total_qtd = df['quantidade'].sum()
-        
+        total_volume = ''
+        if 'volume_capacidade' in df.columns and df['volume_capacidade'].apply(lambda x: isinstance(x, str) and x.strip() != '').any():
+            total_volume = ' / '.join(df['volume_capacidade'].dropna().unique())
+
         # Adiciona linha de total
         rodape = pd.DataFrame({
             'timestamp': [''],
             'descricao_produto': ['TOTAL'],
             'quantidade': [total_qtd],
             'unidade_medida': [''],
-            'volume_capacidade': [''],
+            'volume_capacidade': [total_volume],
             'preco_medio_mercado': [total_custo],
             'marca': [''],
             'validade': [''],
@@ -319,11 +328,11 @@ if st.button("🎯 Finalizar e Salvar Receita"):
             'rendimento_total': [''],
             'observacoes': ['']
         })
-        
+
         df_final = pd.concat([df, rodape], ignore_index=True)
         nome_csv = gerar_nome_csv(st.session_state['nome_receita'])
         df_final.to_csv(nome_csv, sep=';', index=False)
-        
+
         st.success(f"✅ Receita salva em {nome_csv}!")
         st.download_button(
             label="📥 Baixar CSV da Receita",
@@ -331,10 +340,26 @@ if st.button("🎯 Finalizar e Salvar Receita"):
             file_name=nome_csv,
             mime="text/csv"
         )
-        
-        # Limpa a lista de produtos após salvar
+
+        # Limpa a lista de produtos e campos de receita após salvar
         st.session_state['produtos'] = []
-        st.rerun()
+        st.session_state['nome_receita'] = ''
+        st.session_state['rendimento'] = ''
+        st.session_state['observacoes'] = ''
+        st.session_state['campos_extraidos'] = {
+            'descricao': '',
+            'unidade': '',
+            'volume': '',
+            'preco': 0.0,
+            'marca': '',
+            'validade': '',
+            'lote': ''
+        }
+        st.session_state['foto_bytes'] = None
+        st.session_state['foto_hash'] = None
+        st.session_state['texto_original'] = ''
+        st.session_state['debug_info'] = None
+        st.success("Formulário limpo para nova receita!")
     else:
         st.warning("⚠️ Cadastre ao menos um produto e informe o nome da receita!")
 
