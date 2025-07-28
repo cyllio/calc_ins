@@ -6,6 +6,7 @@ from PIL import Image
 import io
 import requests
 import base64
+import re
 
 # Configuração da página
 st.set_page_config(page_title="Cadastro de Insumos com Foto", layout="wide")
@@ -24,7 +25,6 @@ if 'rendimento' not in st.session_state:
     st.session_state['rendimento'] = ''
 if 'observacoes' not in st.session_state:
     st.session_state['observacoes'] = ''
-# Estados para controle da captura
 if 'capturar' not in st.session_state:
     st.session_state['capturar'] = False
 if 'foto_bytes' not in st.session_state:
@@ -40,7 +40,7 @@ if 'campos_extraidos' not in st.session_state:
         'descricao': '',
         'unidade': '',
         'volume': '',
-        'preco': 0.0,
+        'preco': None,
         'marca': '',
         'validade': '',
         'lote': ''
@@ -55,6 +55,22 @@ def get_foto_hash(foto_bytes):
 def adicionar_produto(produto):
     st.session_state['produtos'].append(produto)
 
+# Função para buscar preço médio na internet (usando API pública ou fallback)
+def buscar_preco_medio(descricao):
+    # Exemplo: Busca no Mercado Livre (pode ser adaptado para outra API)
+    try:
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={descricao}"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data['results']:
+                precos = [item['price'] for item in data['results'] if 'price' in item]
+                if precos:
+                    return round(sum(precos) / len(precos), 2)
+    except Exception:
+        pass
+    return None  # Não encontrou
+
 # Função para extrair texto da imagem usando OpenAI Vision (GPT-4o)
 def extrair_texto_imagem_openai(image_bytes):
     image_base64 = base64.b64encode(image_bytes).decode()
@@ -64,13 +80,14 @@ def extrair_texto_imagem_openai(image_bytes):
     }
     prompt = (
         "Extraia todos os textos legíveis da imagem de embalagem de produto alimentício. "
-        "Se possível, identifique: nome do produto, unidade, marca, validade, lote, preço. "
-        "Responda apenas com o texto extraído, sem explicações."
+        "Se possível, identifique: nome popular do produto (ex: Leite Condensado Tradicional, Arroz integral, Farinha de Trigo sem fermento, etc), fabricante/marca, unidade, volume/capacidade, preço, validade, lote. "
+        "Se algum campo não estiver claro, sugira o melhor conteúdo para suprir a ausência. "
+        "Responda no formato JSON com as chaves: descricao, marca, unidade, volume, preco, validade, lote."
     )
     data = {
         "model": "gpt-4o",
         "messages": [
-            {"role": "system", "content": "Você é um extrator de texto de imagens de embalagens."},
+            {"role": "system", "content": "Você é um extrator de dados estruturados de imagens de embalagens."},
             {
                 "role": "user",
                 "content": [
@@ -98,68 +115,68 @@ def extrair_texto_imagem_openai(image_bytes):
             debug_info['result'] = response.text
         return '', debug_info
 
-# Função para parsing inteligente dos campos extraídos
+# Função para parsing dos campos extraídos (esperando JSON)
 def extrair_campos_automaticamente(texto_extraido):
-    import re
-    descricao = ''
-    unidade = ''
-    volume = ''
-    preco = 0.0
-    marca = ''
-    validade = ''
-    lote = ''
-    linhas = texto_extraido.split('\n')
-    for linha in linhas:
-        l = linha.lower()
-        # Extrai marca primeiro, se houver
-        if 'marca' in l:
-            marca_match = re.search(r'marca\s*[:\-]?\s*(.*)', linha, re.IGNORECASE)
-            if marca_match:
-                marca = marca_match.group(1).strip()
-            continue
-        # Extrai validade
-        if 'validade' in l:
-            validade_match = re.search(r'validade\s*[:\-]?\s*(.*)', linha, re.IGNORECASE)
-            if validade_match:
-                validade = validade_match.group(1).strip()
-            continue
-        # Extrai lote
-        if 'lote' in l:
-            lote_match = re.search(r'lote\s*[:\-]?\s*(.*)', linha, re.IGNORECASE)
-            if lote_match:
-                lote = lote_match.group(1).strip()
-            continue
-        # Busca por volume (capacidade do produto)
-        if not volume:
-            volume_match = re.search(r'(\d+[\.,]?\d*)\s*(kg|g|ml|l|lt|ml)', l)
-            if volume_match:
-                volume = volume_match.group(0)
-        # Busca por unidade de medida
-        if not unidade:
-            unidade_match = re.search(r'\b(kg|g|ml|l|lt|unid|unidade|unidades|metros|cm)\b', l)
-            if unidade_match:
-                unidade = unidade_match.group(1)
-        # Busca por preço
-        if not preco:
-            preco_match = re.search(r'(r\$\s*\d+[\.,]?\d*)', l)
-            if preco_match:
-                preco_str = preco_match.group(0).replace('r$', '').replace(' ', '').replace(',', '.')
-                try:
-                    preco = float(preco_str)
-                except:
-                    pass
-        # Primeira linha não vazia, não numérica, que não seja marca, validade ou lote, vira descrição
-        if not descricao and len(linha.strip()) > 3 and not re.match(r'^(marca|validade|lote)\b', l) and not re.match(r'^[\d\s]+$', linha.strip()):
-            descricao = linha.strip()
-    return {
-        'descricao': descricao,
-        'unidade': unidade,
-        'volume': volume,
-        'preco': preco,
-        'marca': marca,
-        'validade': validade,
-        'lote': lote
+    import json
+    campos = {
+        'descricao': '',
+        'unidade': '',
+        'volume': '',
+        'preco': None,
+        'marca': '',
+        'validade': '',
+        'lote': ''
     }
+    try:
+        # Tenta extrair JSON do texto
+        match = re.search(r'\{.*\}', texto_extraido, re.DOTALL)
+        if match:
+            dados = json.loads(match.group(0))
+            for k in campos:
+                if k in dados:
+                    campos[k] = dados[k]
+            # Ajusta preço para float ou None
+            try:
+                campos['preco'] = float(str(campos['preco']).replace(',', '.')) if campos['preco'] else None
+            except:
+                campos['preco'] = None
+    except Exception:
+        pass
+    # Fallback: se não veio JSON, tenta heurística simples
+    if not campos['descricao']:
+        linhas = texto_extraido.split('\n')
+        for linha in linhas:
+            l = linha.lower()
+            if not campos['descricao'] and len(linha.strip()) > 3 and not re.match(r'^(marca|validade|lote)\b', l):
+                campos['descricao'] = linha.strip()
+            if not campos['marca'] and 'marca' in l:
+                campos['marca'] = linha.split(':')[-1].strip()
+            if not campos['validade'] and 'validade' in l:
+                campos['validade'] = linha.split(':')[-1].strip()
+            if not campos['lote'] and 'lote' in l:
+                campos['lote'] = linha.split(':')[-1].strip()
+            if not campos['unidade']:
+                unidade_match = re.search(r'\b(kg|g|ml|l|lt|unid|unidade|unidades|metros|cm)\b', l)
+                if unidade_match:
+                    campos['unidade'] = unidade_match.group(1)
+            if not campos['volume']:
+                volume_match = re.search(r'(\d+[\.,]?\d*)\s*(kg|g|ml|l|lt)', l)
+                if volume_match:
+                    campos['volume'] = volume_match.group(0)
+            if campos['preco'] is None:
+                preco_match = re.search(r'(r\$\s*\d+[\.,]?\d*)', l)
+                if preco_match:
+                    preco_str = preco_match.group(0).replace('r$', '').replace(' ', '').replace(',', '.')
+                    try:
+                        campos['preco'] = float(preco_str)
+                    except:
+                        campos['preco'] = None
+    # Ajusta campos obrigatórios
+    if not campos['descricao']:
+        campos['descricao'] = "Produto não identificado. Informe o nome popular."
+    if not campos['marca']:
+        campos['marca'] = "Marca não identificada. Informe o fabricante."
+    return campos
 
 # Interface principal
 st.subheader("Adicionar Produto com Foto")
@@ -176,7 +193,7 @@ if st.button("📷 CAPTURAR"):
         'descricao': '',
         'unidade': '',
         'volume': '',
-        'preco': 0.0,
+        'preco': None,
         'marca': '',
         'validade': '',
         'lote': ''
@@ -206,9 +223,14 @@ if st.session_state['capturar']:
             
             st.session_state['texto_original'] = texto_extraido
             st.session_state['debug_info'] = debug_info
-            st.session_state['campos_extraidos'] = extrair_campos_automaticamente(texto_extraido)
+            campos = extrair_campos_automaticamente(texto_extraido)
+            # Busca preço médio se não veio da IA
+            if (campos['preco'] is None or campos['preco'] == 0) and campos['descricao']:
+                preco_medio = buscar_preco_medio(campos['descricao'])
+                if preco_medio:
+                    campos['preco'] = preco_medio
+            st.session_state['campos_extraidos'] = campos
         else:
-            # Se a foto não mudou, apenas armazena os bytes
             st.session_state['foto_bytes'] = foto_bytes
             st.session_state['capturar'] = False
 
@@ -233,10 +255,10 @@ col1, col2 = st.columns([2, 2])
 
 with col1:
     descricao = st.text_input("Descrição do produto:", value=st.session_state['campos_extraidos']['descricao'])
-    quantidade = st.number_input("Quantidade utilizada na receita:", min_value=0.0, step=0.01, format="%.2f")
+    quantidade = st.number_input("Quantidade utilizada na receita:", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="")  # Vazio por padrão
     unidade = st.text_input("Unidade de medida (kg, g, ml, l, unid, etc):", value=st.session_state['campos_extraidos']['unidade'])
     volume = st.text_input("Volume/Capacidade do produto (1lt, 350g, 2kg, etc):", value=st.session_state['campos_extraidos']['volume'])
-    preco = st.number_input("Preço médio de mercado (R$):", min_value=0.0, step=0.01, format="%.2f", value=st.session_state['campos_extraidos']['preco'])
+    preco = st.number_input("Preço médio de mercado (R$):", min_value=0.0, step=0.01, format="%.2f", value=st.session_state['campos_extraidos']['preco'] if st.session_state['campos_extraidos']['preco'] else None, placeholder="")
 
 with col2:
     marca = st.text_input("Marca (opcional):", value=st.session_state['campos_extraidos']['marca'])
@@ -270,7 +292,7 @@ if st.button("✅ INSERIR PRODUTO"):
             'descricao': '',
             'unidade': '',
             'volume': '',
-            'preco': 0.0,
+            'preco': None,
             'marca': '',
             'validade': '',
             'lote': ''
@@ -350,7 +372,7 @@ if st.button("🎯 Finalizar e Salvar Receita"):
             'descricao': '',
             'unidade': '',
             'volume': '',
-            'preco': 0.0,
+            'preco': None,
             'marca': '',
             'validade': '',
             'lote': ''
