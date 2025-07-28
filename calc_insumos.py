@@ -389,12 +389,12 @@ if st.button("🎯 Finalizar e Salvar Receita"):
 
         df_final = pd.concat([df, rodape], ignore_index=True)
         nome_csv = gerar_nome_csv(st.session_state['nome_receita'])
-        df_final.to_csv(nome_csv, sep=';', index=False)
+        csv_data = df_final.to_csv(sep=';', index=False).encode('utf-8')
 
-        st.success(f"✅ Receita salva em {nome_csv}!")
+        st.success(f"✅ Receita pronta para download!")
         st.download_button(
             label="📥 Baixar CSV da Receita",
-            data=df_final.to_csv(sep=';', index=False),
+            data=csv_data,
             file_name=nome_csv,
             mime="text/csv"
         )
