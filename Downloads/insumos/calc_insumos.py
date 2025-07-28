@@ -136,8 +136,13 @@ with col1:
         st.session_state['debug_info'] = None
         st.session_state['campos_auto'] = ('', '', 0.0, '', '', '')
 
+    # Mostra mensagem quando a câmera não está ativa
+    if not st.session_state['capturar']:
+        st.info("📷 Clique em 'CAPTURAR' para ativar a câmera e tirar uma foto do produto.")
+    
     # Só mostra a câmera se o usuário clicou em CAPTURAR
     if st.session_state['capturar']:
+        st.success("📸 Câmera ativada! Tire uma foto do produto.")
         foto = st.camera_input("Tire uma foto do produto (os dados serão extraídos automaticamente)")
         if foto is not None:
             foto_bytes = foto.getvalue()
