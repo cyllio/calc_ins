@@ -57,7 +57,7 @@ if 'quantidade_input' not in st.session_state:
 if 'preco_input' not in st.session_state:
     st.session_state['preco_input'] = 0.0
 
-# Função para resetar o formulário (sem mexer em 'capturar')
+# Função para resetar o formulário (sem st.rerun)
 def resetar_formulario():
     st.session_state['foto_bytes'] = None
     st.session_state['foto_hash'] = None
@@ -74,6 +74,11 @@ def resetar_formulario():
     }
     st.session_state['quantidade_input'] = 0.0
     st.session_state['preco_input'] = 0.0
+
+# Função para ativar captura
+def ativar_captura():
+    st.session_state['capturar'] = True
+    resetar_formulario()
 
 # Função para gerar hash da foto
 def get_foto_hash(foto_bytes):
@@ -209,10 +214,8 @@ def extrair_campos_automaticamente(texto_extraido):
 # Interface principal
 st.subheader("Adicionar Produto com Foto")
 
-# Botão para ativar a captura
-if st.button("📷 CAPTURAR"):
-    st.session_state['capturar'] = True
-    resetar_formulario()
+# Botão para ativar a captura (usando on_click para reset seguro)
+st.button("📷 CAPTURAR", on_click=ativar_captura)
 
 # Mostra mensagem quando a câmera não está ativa
 if not st.session_state['capturar']:
@@ -220,7 +223,7 @@ if not st.session_state['capturar']:
 
 # Dica para câmera traseira
 if st.session_state['capturar']:
-    st.warning("Se estiver no celular, use o ícone de troca de câmera para selecionar a câmera traseira.")
+    st.warning("💡 Se estiver no celular, use o ícone de troca de câmera para selecionar a câmera traseira.")
 
 # Só mostra a câmera se o usuário clicou em CAPTURAR
 if st.session_state['capturar']:
@@ -319,7 +322,6 @@ if st.button("✅ INSERIR PRODUTO"):
         adicionar_produto(produto)
         st.success("✅ Produto adicionado com sucesso!")
         resetar_formulario()
-        st.session_state['capturar'] = False
         st.rerun()
     else:
         st.warning("⚠️ Preencha ao menos a descrição e unidade!")
@@ -382,7 +384,6 @@ if st.button("🎯 Finalizar e Salvar Receita"):
         st.download_button(
             label="📥 Baixar CSV da Receita",
             data=df_final.to_csv(sep=';', index=False),
-            file_name=nome_csv,
             mime="text/csv"
         )
 
@@ -392,9 +393,7 @@ if st.button("🎯 Finalizar e Salvar Receita"):
         st.session_state['rendimento'] = ''
         st.session_state['observacoes'] = ''
         resetar_formulario()
-        st.session_state['capturar'] = False
         st.rerun()
-        st.success("Formulário limpo para nova receita!")
     else:
         st.warning("⚠️ Cadastre ao menos um produto e informe o nome da receita!")
 
