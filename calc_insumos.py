@@ -80,7 +80,8 @@ def extrair_texto_imagem_openai(image_bytes):
     }
     prompt = (
         "Extraia todos os textos legíveis da imagem de embalagem de produto alimentício. "
-        "Se possível, identifique: nome popular do produto (ex: Leite Condensado Tradicional, Arroz integral, Farinha de Trigo sem fermento, etc), fabricante/marca, unidade, volume/capacidade, preço, validade, lote. "
+        "Se possível, identifique: nome popular do produto, fabricante/marca, unidade de medida (apenas a unidade, como kg, g, ml, l, etc), volume/capacidade (ex: 2kg, 350g, 1lt), preço, validade, lote. "
+        "No campo 'unidade' coloque apenas a unidade, sem números. No campo 'volume' coloque o valor completo, como '2kg', '350g', etc. "
         "Se algum campo não estiver claro, sugira o melhor conteúdo para suprir a ausência. "
         "Responda no formato JSON com as chaves: descricao, marca, unidade, volume, preco, validade, lote."
     )
@@ -127,50 +128,50 @@ def extrair_campos_automaticamente(texto_extraido):
         'validade': '',
         'lote': ''
     }
+    # Tenta extrair JSON do texto
     try:
-        # Tenta extrair JSON do texto
         match = re.search(r'\{.*\}', texto_extraido, re.DOTALL)
         if match:
             dados = json.loads(match.group(0))
             for k in campos:
                 if k in dados:
                     campos[k] = dados[k]
-            # Ajusta preço para float ou None
             try:
                 campos['preco'] = float(str(campos['preco']).replace(',', '.')) if campos['preco'] else None
             except:
                 campos['preco'] = None
     except Exception:
         pass
-    # Fallback: se não veio JSON, tenta heurística simples
-    if not campos['descricao']:
-        linhas = texto_extraido.split('\n')
-        for linha in linhas:
-            l = linha.lower()
-            if not campos['descricao'] and len(linha.strip()) > 3 and not re.match(r'^(marca|validade|lote)\b', l):
-                campos['descricao'] = linha.strip()
-            if not campos['marca'] and 'marca' in l:
-                campos['marca'] = linha.split(':')[-1].strip()
-            if not campos['validade'] and 'validade' in l:
-                campos['validade'] = linha.split(':')[-1].strip()
-            if not campos['lote'] and 'lote' in l:
-                campos['lote'] = linha.split(':')[-1].strip()
-            if not campos['unidade']:
-                unidade_match = re.search(r'\b(kg|g|ml|l|lt|unid|unidade|unidades|metros|cm)\b', l)
-                if unidade_match:
-                    campos['unidade'] = unidade_match.group(1)
-            if not campos['volume']:
-                volume_match = re.search(r'(\d+[\.,]?\d*)\s*(kg|g|ml|l|lt)', l)
-                if volume_match:
-                    campos['volume'] = volume_match.group(0)
-            if campos['preco'] is None:
-                preco_match = re.search(r'(r\$\s*\d+[\.,]?\d*)', l)
-                if preco_match:
-                    preco_str = preco_match.group(0).replace('r$', '').replace(' ', '').replace(',', '.')
-                    try:
-                        campos['preco'] = float(preco_str)
-                    except:
-                        campos['preco'] = None
+
+    # Parsing manual para garantir separação correta
+    linhas = texto_extraido.split('\n')
+    volume_pattern = re.compile(r'(\d+[\.,]?\d*)\s*(kg|g|ml|l|lt|unid|unidade|unidades|metros|cm)\b', re.IGNORECASE)
+    unidade_pattern = re.compile(r'\b(kg|g|ml|l|lt|unid|unidade|unidades|metros|cm)\b', re.IGNORECASE)
+
+    volumes_encontrados = []
+    unidades_encontradas = []
+
+    for linha in linhas:
+        # Volume/capacidade: número + unidade
+        for m in volume_pattern.finditer(linha):
+            volumes_encontrados.append(m.group(0).replace(' ', ''))
+        # Unidade: só a unidade, sem número antes
+        for m in unidade_pattern.finditer(linha):
+            # Só adiciona se não for parte de um volume já encontrado
+            if not any(m.group(0) in v for v in volumes_encontrados):
+                unidades_encontradas.append(m.group(0))
+
+    # Preenche os campos corretamente
+    if volumes_encontrados:
+        campos['volume'] = volumes_encontrados[0]
+    if unidades_encontradas:
+        campos['unidade'] = unidades_encontradas[0]
+    elif campos['volume']:
+        # Se não achou unidade isolada, extrai só a unidade do volume
+        unidade_match = unidade_pattern.search(campos['volume'])
+        if unidade_match:
+            campos['unidade'] = unidade_match.group(0)
+
     # Ajusta campos obrigatórios
     if not campos['descricao']:
         campos['descricao'] = "Produto não identificado. Informe o nome popular."
